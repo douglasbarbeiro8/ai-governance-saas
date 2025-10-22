@@ -19,6 +19,7 @@ export default function PortalPage() {
   const logAppend = (msg: string) =>
     setLog((prev) => `${new Date().toLocaleTimeString()}  ${msg}\n${prev}`);
 
+  // === Proteção client-side: sem sessão => volta pro /login
   useEffect(() => {
     supa.auth.getSession().then(({ data }) => {
       if (!data.session) {
