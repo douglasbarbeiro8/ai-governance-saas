@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// usando caminho relativo para garantir que resolve em qualquer setup
 import { supaBrowser } from "../../lib/supabase-browser";
 
 type UserInfo = { id: string; email?: string | null } | null;
@@ -24,7 +23,13 @@ export default function LoginTest() {
   const logAppend = (msg: string) =>
     setLog((prev) => `${new Date().toLocaleTimeString()}  ${msg}\n${prev}`);
 
-  // mantém estado da sessão em memória
+  // helper para pegar o header Authorization
+  async function authHeaders() {
+    const { data } = await supa.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   useEffect(() => {
     supa.auth.getUser().then(({ data }) => {
       if (data.user) setUser({ id: data.user.id, email: data.user.email });
@@ -35,15 +40,11 @@ export default function LoginTest() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // --------- Auth ----------
   async function signUp() {
     const { error } = await supa.auth.signUp({
       email,
       password,
-      options: {
-        // garante que o link de confirmação volte para esta tela
-        emailRedirectTo: `${window.location.origin}/login-test`,
-      },
+      options: { emailRedirectTo: `${window.location.origin}/login-test` },
     });
     if (error) return alert(error.message);
     alert("Conta criada! Verifique seu e-mail para confirmar.");
@@ -61,11 +62,14 @@ export default function LoginTest() {
     logAppend("Logout ok.");
   }
 
-  // --------- chamadas às APIs ----------
+  // --------- chamadas às APIs (com Authorization) ----------
   async function createOrg() {
     const res = await fetch("/api/orgs", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
       body: JSON.stringify({ name: "Minha Empresa", sector: "Serviços", country: "BR" }),
     });
     const json = await res.json();
@@ -77,7 +81,10 @@ export default function LoginTest() {
   async function createSystem() {
     const res = await fetch("/api/systems", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
       body: JSON.stringify({ orgId, name: "Meu Sistema de IA", riskLevel: "alto" }),
     });
     const json = await res.json();
@@ -89,7 +96,10 @@ export default function LoginTest() {
   async function createAssessment() {
     const res = await fetch("/api/assessments", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
       body: JSON.stringify({ orgId, systemId, framework: "NIST AI RMF 1.0" }),
     });
     const json = await res.json();
@@ -100,12 +110,15 @@ export default function LoginTest() {
 
   async function uploadEvidence() {
     if (!file) return alert("Selecione um arquivo");
-    const questionId = 1; // teste
+    const questionId = 1;
 
     // 1) pede a URL assinada ao backend
     const res = await fetch("/api/evidence/sign", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
       body: JSON.stringify({
         assessmentId,
         questionId,
@@ -116,48 +129,37 @@ export default function LoginTest() {
     const json = await res.json();
     if (!res.ok) return alert(json.error || "erro ao assinar upload");
 
-    // 2) usa o client público com token para enviar
+    // 2) envia ao Storage
     const { error } = await supa.storage
       .from("evidence")
       .uploadToSignedUrl(json.storagePath, json.token, file, {
         contentType: file.type || "application/octet-stream",
         upsert: false,
       });
-
     if (error) return alert(error.message);
     logAppend(`Evidência enviada: ${json.storagePath}`);
   }
 
-  // --------- UI ---------
   return (
     <main style={{ display: "grid", gap: 16 }}>
       <h2 style={{ marginTop: 0 }}>Login & Teste de APIs</h2>
 
-      {/* Auth */}
       <section style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8, background: "#fafafa" }}>
         <h3>1) Autenticação</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            placeholder="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }}
-          />
-          <input
-            placeholder="senha"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }}
-          />
+          <input placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }} />
+          <input placeholder="senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }} />
           <button onClick={signUp} style={{ padding: "8px 12px" }}>Criar conta</button>
           <button onClick={signIn} style={{ padding: "8px 12px" }}>Login</button>
           <button onClick={signOut} style={{ padding: "8px 12px" }}>Logout</button>
         </div>
-        <p style={{ marginTop: 8 }}>Usuário: {user ? `${user.email} (${user.id})` : "deslogado"}</p>
+        <p style={{ marginTop: 8 }}>
+          Usuário: {user ? `${user.email} (${user.id})` : "deslogado"}
+        </p>
       </section>
 
-      {/* Entidades */}
       <section style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8 }}>
         <h3>2) Criar Organização & Sistema & Assessment</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -170,27 +172,20 @@ export default function LoginTest() {
         <p>assessmentId: {assessmentId || "-"}</p>
       </section>
 
-      {/* Upload */}
       <section style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8 }}>
         <h3>3) Upload de Evidência</h3>
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-        <button onClick={uploadEvidence} disabled={!assessmentId || !file} style={{ marginLeft: 8, padding: "8px 12px" }}>
+        <button onClick={uploadEvidence} disabled={!assessmentId || !file}
+          style={{ marginLeft: 8, padding: "8px 12px" }}>
           Enviar evidência
         </button>
       </section>
 
-      {/* Log */}
-      <section
-        style={{
-          padding: 12,
-          border: "1px solid #e5e7eb",
-          borderRadius: 8,
-          background: "#0b1220",
-          color: "#e5e7eb",
-          whiteSpace: "pre-wrap",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas",
-        }}
-      >
+      <section style={{
+        padding: 12, border: "1px solid #e5e7eb", borderRadius: 8,
+        background: "#0b1220", color: "#e5e7eb", whiteSpace: "pre-wrap",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas"
+      }}>
         <h3 style={{ marginTop: 0 }}>Log</h3>
         <code>{log || "(vazio)"}</code>
       </section>
