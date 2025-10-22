@@ -36,11 +36,19 @@ export default function LoginTest() {
   }, []);
 
   // --------- Auth ----------
-  async function signUp() {
-    const { error } = await supa.auth.signUp({ email, password });
-    if (error) return alert(error.message);
-    alert("Conta criada! Se a confirmação por e-mail estiver ativa, confirme e depois faça login.");
-  }
+async function signUp() {
+  const { error } = await supa.auth.signUp({
+    email,
+    password,
+    options: {
+      // envia o link de confirmação para voltar à tela de teste
+      emailRedirectTo: `${window.location.origin}/login-test`,
+    },
+  });
+  if (error) return alert(error.message);
+  alert("Conta criada! Verifique seu e-mail para confirmar.");
+}
+
 
   async function signIn() {
     const { error } = await supa.auth.signInWithPassword({ email, password });
