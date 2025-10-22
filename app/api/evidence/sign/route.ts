@@ -29,8 +29,12 @@ export async function POST(req: NextRequest) {
   const rand = Math.random().toString(36).slice(2, 10);
   const safeName = parse.data.filename.replace(/[^a-zA-Z0-9_.-]/g, "_");
   const path = `org_${orgId}/ass_${parse.data.assessmentId}/q_${parse.data.questionId}/${ts}-${rand}-${safeName}`;
-  const { data: signed, error: signErr } = await admin.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: false, contentType: parse.data.mime });
-  if (signErr) return NextResponse.json({ error: signErr.message }, { status: 500 });
-  await admin.from("evidence").insert({ org_id: orgId, assessment_id: parse.data.assessmentId, question_id: parse.data.questionId, storage_path: path, uploaded_by: user.id });
-  return NextResponse.json({ uploadUrl: signed.signedUrl, storagePath: path });
-}
+const { data: signed, error: signErr } = await admin.storage
+  .from(BUCKET)
+  .createSignedUploadUrl(path);
+if (signErr) return NextResponse.json({ error: signErr.message }, { status: 500 });
+return NextResponse.json({
+  uploadUrl: signed.signedUrl,
+  token: signed.token,
+  storagePath: path,
+});
