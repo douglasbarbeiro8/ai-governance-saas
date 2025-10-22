@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// import absoluto pode variar; para garantir, uso relativo:
+// usando caminho relativo para garantir que resolve em qualquer setup
 import { supaBrowser } from "../../lib/supabase-browser";
 
 type UserInfo = { id: string; email?: string | null } | null;
@@ -24,7 +24,7 @@ export default function LoginTest() {
   const logAppend = (msg: string) =>
     setLog((prev) => `${new Date().toLocaleTimeString()}  ${msg}\n${prev}`);
 
-  // mantém estado de sessão
+  // mantém estado da sessão em memória
   useEffect(() => {
     supa.auth.getUser().then(({ data }) => {
       if (data.user) setUser({ id: data.user.id, email: data.user.email });
@@ -36,19 +36,18 @@ export default function LoginTest() {
   }, []);
 
   // --------- Auth ----------
-async function signUp() {
-  const { error } = await supa.auth.signUp({
-    email,
-    password,
-    options: {
-      // envia o link de confirmação para voltar à tela de teste
-      emailRedirectTo: `${window.location.origin}/login-test`,
-    },
-  });
-  if (error) return alert(error.message);
-  alert("Conta criada! Verifique seu e-mail para confirmar.");
-}
-
+  async function signUp() {
+    const { error } = await supa.auth.signUp({
+      email,
+      password,
+      options: {
+        // garante que o link de confirmação volte para esta tela
+        emailRedirectTo: `${window.location.origin}/login-test`,
+      },
+    });
+    if (error) return alert(error.message);
+    alert("Conta criada! Verifique seu e-mail para confirmar.");
+  }
 
   async function signIn() {
     const { error } = await supa.auth.signInWithPassword({ email, password });
@@ -101,7 +100,7 @@ async function signUp() {
 
   async function uploadEvidence() {
     if (!file) return alert("Selecione um arquivo");
-    const questionId = 1; // só para teste
+    const questionId = 1; // teste
 
     // 1) pede a URL assinada ao backend
     const res = await fetch("/api/evidence/sign", {
@@ -117,7 +116,7 @@ async function signUp() {
     const json = await res.json();
     if (!res.ok) return alert(json.error || "erro ao assinar upload");
 
-    // 2) usa o client público para enviar com token
+    // 2) usa o client público com token para enviar
     const { error } = await supa.storage
       .from("evidence")
       .uploadToSignedUrl(json.storagePath, json.token, file, {
@@ -198,4 +197,3 @@ async function signUp() {
     </main>
   );
 }
-
