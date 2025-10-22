@@ -1,3 +1,4 @@
+// app/api/evidence/sign/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
@@ -36,33 +37,32 @@ async function isMemberOfOrg(supabase: any, userId: string, orgId: string) {
 
 export async function POST(req: NextRequest) {
   const cookieStore = cookies();
+
+  // Client com sessão do usuário (via cookie + Authorization)
   const client = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { get: (key) => cookieStore.get(key)?.value } }
+    {
+      cookies: { get: (key) => cookieStore.get(key)?.value },
+      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+    }
   );
 
   const {
     data: { user },
     error: userErr,
   } = await client.auth.getUser();
-  if (userErr || !user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  if (userErr || !user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const json = await req.json();
   const parse = Body.safeParse(json);
-  if (!parse.success) {
-    return NextResponse.json({ error: parse.error.flatten() }, { status: 400 });
-  }
+  if (!parse.success) return NextResponse.json({ error: parse.error.flatten() }, { status: 400 });
 
   const orgId = await getAssessmentOrg(client, parse.data.assessmentId);
   const ok = await isMemberOfOrg(client, user.id, orgId);
-  if (!ok) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  if (!ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  // SERVICE ROLE apenas no servidor
+  // Service Role para assinar upload e gravar trilha de evidência (somente no servidor)
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -77,9 +77,7 @@ export async function POST(req: NextRequest) {
   const { data: signed, error: signErr } = await admin.storage
     .from(BUCKET)
     .createSignedUploadUrl(path);
-  if (signErr) {
-    return NextResponse.json({ error: signErr.message }, { status: 500 });
-  }
+  if (signErr) return NextResponse.json({ error: signErr.message }, { status: 500 });
 
   await admin.from("evidence").insert({
     org_id: orgId,
