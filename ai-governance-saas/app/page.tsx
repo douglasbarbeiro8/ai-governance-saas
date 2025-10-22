@@ -1,1 +1,0 @@
-export default function Page() { return (<main><h2>Bem-vindo 👋</h2><p>Starter do portal SaaS NIST AI RMF.</p><ul><li>APIs em <code>/app/api</code></li><li>Configure as envs na Vercel</li></ul></main>); }
