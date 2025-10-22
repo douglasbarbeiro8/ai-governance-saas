@@ -23,11 +23,14 @@ export default function LoginTest() {
   const logAppend = (msg: string) =>
     setLog((prev) => `${new Date().toLocaleTimeString()}  ${msg}\n${prev}`);
 
-  // helper para pegar o header Authorization
-  async function authHeaders() {
+  // Cria headers com Authorization (quando houver sessão)
+  async function buildAuthHeaders() {
+    const h = new Headers();
+    h.set("Content-Type", "application/json");
     const { data } = await supa.auth.getSession();
     const token = data.session?.access_token;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    if (token) h.set("Authorization", `Bearer ${token}`);
+    return h; // Headers (compatível com HeadersInit)
   }
 
   useEffect(() => {
@@ -40,6 +43,7 @@ export default function LoginTest() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // --------- Auth ----------
   async function signUp() {
     const { error } = await supa.auth.signUp({
       email,
@@ -62,14 +66,11 @@ export default function LoginTest() {
     logAppend("Logout ok.");
   }
 
-  // --------- chamadas às APIs (com Authorization) ----------
+  // --------- APIs ----------
   async function createOrg() {
     const res = await fetch("/api/orgs", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(await authHeaders()),
-      },
+      headers: await buildAuthHeaders(),
       body: JSON.stringify({ name: "Minha Empresa", sector: "Serviços", country: "BR" }),
     });
     const json = await res.json();
@@ -81,10 +82,7 @@ export default function LoginTest() {
   async function createSystem() {
     const res = await fetch("/api/systems", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(await authHeaders()),
-      },
+      headers: await buildAuthHeaders(),
       body: JSON.stringify({ orgId, name: "Meu Sistema de IA", riskLevel: "alto" }),
     });
     const json = await res.json();
@@ -96,10 +94,7 @@ export default function LoginTest() {
   async function createAssessment() {
     const res = await fetch("/api/assessments", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(await authHeaders()),
-      },
+      headers: await buildAuthHeaders(),
       body: JSON.stringify({ orgId, systemId, framework: "NIST AI RMF 1.0" }),
     });
     const json = await res.json();
@@ -112,13 +107,10 @@ export default function LoginTest() {
     if (!file) return alert("Selecione um arquivo");
     const questionId = 1;
 
-    // 1) pede a URL assinada ao backend
+    // 1) assina o upload
     const res = await fetch("/api/evidence/sign", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(await authHeaders()),
-      },
+      headers: await buildAuthHeaders(),
       body: JSON.stringify({
         assessmentId,
         questionId,
@@ -129,7 +121,7 @@ export default function LoginTest() {
     const json = await res.json();
     if (!res.ok) return alert(json.error || "erro ao assinar upload");
 
-    // 2) envia ao Storage
+    // 2) envia para o Storage com o token
     const { error } = await supa.storage
       .from("evidence")
       .uploadToSignedUrl(json.storagePath, json.token, file, {
@@ -140,26 +132,36 @@ export default function LoginTest() {
     logAppend(`Evidência enviada: ${json.storagePath}`);
   }
 
+  // --------- UI ---------
   return (
     <main style={{ display: "grid", gap: 16 }}>
       <h2 style={{ marginTop: 0 }}>Login & Teste de APIs</h2>
 
+      {/* Auth */}
       <section style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8, background: "#fafafa" }}>
         <h3>1) Autenticação</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }} />
-          <input placeholder="senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }} />
+          <input
+            placeholder="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }}
+          />
+          <input
+            placeholder="senha"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }}
+          />
           <button onClick={signUp} style={{ padding: "8px 12px" }}>Criar conta</button>
           <button onClick={signIn} style={{ padding: "8px 12px" }}>Login</button>
           <button onClick={signOut} style={{ padding: "8px 12px" }}>Logout</button>
         </div>
-        <p style={{ marginTop: 8 }}>
-          Usuário: {user ? `${user.email} (${user.id})` : "deslogado"}
-        </p>
+        <p style={{ marginTop: 8 }}>Usuário: {user ? `${user.email} (${user.id})` : "deslogado"}</p>
       </section>
 
+      {/* Entidades */}
       <section style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8 }}>
         <h3>2) Criar Organização & Sistema & Assessment</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -172,6 +174,7 @@ export default function LoginTest() {
         <p>assessmentId: {assessmentId || "-"}</p>
       </section>
 
+      {/* Upload */}
       <section style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8 }}>
         <h3>3) Upload de Evidência</h3>
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
@@ -181,11 +184,18 @@ export default function LoginTest() {
         </button>
       </section>
 
-      <section style={{
-        padding: 12, border: "1px solid #e5e7eb", borderRadius: 8,
-        background: "#0b1220", color: "#e5e7eb", whiteSpace: "pre-wrap",
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas"
-      }}>
+      {/* Log */}
+      <section
+        style={{
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 8,
+          background: "#0b1220",
+          color: "#e5e7eb",
+          whiteSpace: "pre-wrap",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas",
+        }}
+      >
         <h3 style={{ marginTop: 0 }}>Log</h3>
         <code>{log || "(vazio)"}</code>
       </section>
